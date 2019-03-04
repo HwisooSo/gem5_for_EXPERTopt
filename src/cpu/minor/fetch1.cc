@@ -47,6 +47,8 @@
 #include "debug/Drain.hh"
 #include "debug/Fetch.hh"
 #include "debug/MinorTrace.hh"
+#include "debug/fetchProfile.hh"
+#include "debug/faultInjectionTrack.hh"
 
 namespace Minor
 {
@@ -117,6 +119,10 @@ Fetch1::Fetch1(const std::string &name_,
 void
 Fetch1::fetchLine()
 {
+	
+	
+	
+	
     /* If line_offset != 0, a request is pushed for the remainder of the
      * line. */
     /* Use a lower, sizeof(MachInst) aligned address for the fetch */
@@ -406,6 +412,96 @@ Fetch1::recvTimingResp(PacketPtr response)
             fetch_request->id);
     }
 
+	std::string funcName="nothing";
+	Addr sym_addr;
+	debugSymbolTable->findNearestSymbol(cpu.getContext(0)->instAddr(), funcName, sym_addr);
+	
+	
+	
+	//HwiSoo. fetchProfile for fault injection
+	if( (funcName[0] == 'F' &&  funcName[1] == 'U' && funcName[2] == 'N' && funcName[3] == 'C') || (funcName == "main") )
+	{
+		//DPRINTF(fetchProfile, "cpu%d:%d:%d\n", cpu.cpuId(), fetch_request->packet->getSize(), fetch_request->packet->hasData());
+		
+		/*
+		DPRINTF(fetchProfile, "cpu%d:Fetch:", cpu.cpuId());
+		for (int i=0; i<32; i++)
+		{
+			unsigned int hwisoo_data=fetch_request->packet->getDataForFI(i*4);
+			hwisoo_data = hwisoo_data|(fetch_request->packet->getDataForFI(i*4+1)<<8);
+			hwisoo_data = hwisoo_data|(fetch_request->packet->getDataForFI(i*4+2)<<16);
+			hwisoo_data = hwisoo_data|(fetch_request->packet->getDataForFI(i*4+3)<<24);
+			DPRINTF(fetchProfile, "%x\n", hwisoo_data);
+			//DPRINTF(fetchProfile, "cpu%d:%d:%d:%x\n", cpu.cpuId(), fetch_request->packet->getSize(), fetch_request->packet->hasData(), hwisoo_data);
+			
+		}
+		DPRINTF(fetchProfile, "\n");
+		*/
+		/*
+		unsigned int hwisoo_data=fetch_request->packet->getDataForFI(0);
+		hwisoo_data = hwisoo_data|(fetch_request->packet->getDataForFI(1)<<8);
+		hwisoo_data = hwisoo_data|(fetch_request->packet->getDataForFI(2)<<16);
+		hwisoo_data = hwisoo_data|(fetch_request->packet->getDataForFI(3)<<24);
+		
+		DPRINTF(fetchProfile, "cpu%d:%d:%d:%x\n", cpu.cpuId(), fetch_request->packet->getSize(), fetch_request->packet->hasData(), hwisoo_data);
+		*/
+		
+		//This one is previous profiling for EXPERT
+		//DPRINTF(fetchProfile, "cpu%d:%d:%d\n", cpu.cpuId(), fetch_request->packet->getSize(), fetch_request->packet->hasData());
+	}
+	
+	/*
+	//HwiSoo. soft error Injection
+	if ( (!faultIsInjected)  && (curTick() == FItick))
+	{
+		unsigned int byte = (int)FIbit/8;
+		if(!fetch_request->packet->hasData())
+			DPRINTF(faultInjectionTrack, "Fault Injectio Error! fetch packet does not have data\n");
+		else if (fetch_request->packet->getSize()<=byte)
+			DPRINTF(faultInjectionTrack, "Fault Injectio Error! fetch packet data is smaller than injection byte\n");
+		else
+		{
+
+			unsigned int old_data = fetch_request->packet->getDataForFI(byte);
+			fetch_request->packet->flipData(byte, FIbit%8);
+				
+			DPRINTF(faultInjectionTrack, "************Fault is activated**************\nCPU:%d:fetch data of byte [%d] will be %d -> %d\n", cpu.cpuId(), byte, old_data, fetch_request->packet->getDataForFI(byte));
+		}
+		faultIsInjected=true;
+	}	
+	
+	//HwiSoo. permanent fault injection
+	else if(permanentInjection)
+	{
+		if( ( (funcName[0] == 'F' &&  funcName[1] == 'U' && funcName[2] == 'N' && funcName[3] == 'C') || (funcName == "main") ) && cpu.getContext(0)->insideNonRepeatable==false)
+		{
+			if (FIbit<64) // make 0
+			{
+				unsigned int byte = (int)FIbit/8;
+				unsigned int injectBit = (pow (2, FIbit%8)); 
+				//injectBit = ~injectBit;
+				unsigned int old_data = fetch_request->packet->getDataForFI(byte);
+				
+				if ((old_data&injectBit) != 0)
+					fetch_request->packet->flipData(byte, FIbit%8);
+			}
+			else
+			{
+				unsigned int byte = ((int)FIbit-64)/8;
+				unsigned int injectBit = (pow (2, FIbit%8)); 
+				injectBit = ~injectBit; //ex) 11111011
+				unsigned int old_data = fetch_request->packet->getDataForFI(byte);
+				
+				if (~(old_data|injectBit) != 0)
+					fetch_request->packet->flipData(byte, FIbit%8);			
+			}
+		}
+		
+		
+		
+	}
+	*/
+	
     /* We go to idle even if there are more things to do on the queues as
      *  it's the job of step to actually step us on to the next transaction */
 
@@ -532,6 +628,26 @@ Fetch1::evaluate()
     ForwardLineData &line_out = *out.inputWire;
 
     assert(line_out.isBubble());
+	
+	
+	//HWISOO soft error Injection (for PC. currently it is r15)
+	if ( (!faultIsInjected)  && (curTick() == FItick))
+	{
+			
+		std::string funcName="nothing";
+		Addr sym_addr;
+		debugSymbolTable->findNearestSymbol(cpu.getContext(0)->instAddr(), funcName, sym_addr);
+		
+		Addr oldNextAddr = pc.npc();
+		Addr injectBit = pow (2, (FIbit));
+		pc.npc(oldNextAddr xor injectBit);
+		DPRINTF(faultInjectionTrack, "************Fault is activated**************\ncpu%d:In function %s, next addr is 0x%x -> 0x%x\n", cpu.cpuId(), funcName, oldNextAddr, pc.nextInstAddr());
+		
+		faultIsInjected=true;
+	}	
+
+	
+	
 
     blocked = !nextStageReserve.canReserve();
 

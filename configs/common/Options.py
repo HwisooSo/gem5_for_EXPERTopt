@@ -87,6 +87,19 @@ def addCommonOptions(parser):
                       Only used if multiple programs are specified. If true,
                       then the number of threads per cpu is same as the
                       number of programs.""")
+    parser.add_option("--FIcore", type="long", default="0",
+                help = "The core for fault injection")
+    parser.add_option("--FIcomponent", type="long", default="0",
+                help = "The hardware component for fault injection, 1/2/3/4 for register file/pipelineregisters/ Functional Units/LSQ")
+    parser.add_option("--FItick", type="long", default="0",
+                help = "The time that the fault will be injected")
+    parser.add_option("--FIentry", type="long", default="0",
+                help = "The entry/register that the fault is going to inject")
+    parser.add_option("--FIbit", type="long", default="0",
+                help = "The bit which going to get fliped because of fault")
+    parser.add_option("--MaxTick", type="long", default="0",
+                help = "Maximum tick, this is used for fault injection")
+    # moslem FI options
     parser.add_option("--elastic-trace-en", action="store_true",
                       help="""Enable capture of data dependency and instruction
                       fetch traces using elastic trace probe.""")

@@ -47,7 +47,11 @@
 #include "debug/Branch.hh"
 #include "debug/Fetch.hh"
 #include "debug/MinorTrace.hh"
-
+//#include "debug/bpredProfile.hh"
+//#include "debug/fetchAnotherProfile.hh"
+#include "debug/fetchProfile.hh"
+#include "debug/fetchExceptStoreProfile.hh"
+#include "debug/faultInjectionTrack.hh"
 namespace Minor
 {
 
@@ -192,6 +196,7 @@ Fetch2::predictBranch(MinorDynInstPtr inst, BranchData &branch)
         inst->triedToPredict = true;
 
         DPRINTF(Branch, "Trying to predict for inst: %s\n", *inst);
+		
 
         if (branchPredictor.predict(inst->staticInst,
             inst->id.fetchSeqNum, inst_pc,
@@ -201,9 +206,25 @@ Fetch2::predictBranch(MinorDynInstPtr inst, BranchData &branch)
             inst->predictedTarget = inst_pc;
             branch.target = inst_pc;
         }
+		
+		/*
+		std::string funcName="nothing";
+		Addr sym_addr;
+		debugSymbolTable->findNearestSymbol(cpu.getContext(0)->instAddr(), funcName, sym_addr);
+		
+		
+		if( (funcName[0] == 'F' &&  funcName[1] == 'U' && funcName[2] == 'N' && funcName[3] == 'C') || (funcName == "main") )
+		{
+			DPRINTF(bpredProfile, "%s/%d/0x%x\n", inst->staticInst->disassemble(0), inst->predictedTaken, inst->predictedTarget);
+		}
+		*/
     } else {
         DPRINTF(Branch, "Not attempting prediction for inst: %s\n", *inst);
     }
+	
+
+
+	
 
     /* If we predict taken, set branch and update sequence numbers */
     if (inst->predictedTaken) {
@@ -237,6 +258,23 @@ Fetch2::evaluate()
     assert(insts_out.isBubble());
 
     blocked = false;
+	
+	/*
+	//if ( (!faultIsInjected) && (oldFIcomponent == 1) && (curTick() >= FItick))
+	{
+		std::string funcName="nothing";
+		Addr sym_addr;
+		debugSymbolTable->findNearestSymbol(cpu.getContext(0)->instAddr(), funcName, sym_addr);
+		
+		Addr oldNextAddr = pc.npc();
+		Addr injectBit = pow (2, (FIbit));
+		pc.npc(oldNextAddr xor injectBit);
+		DPRINTF(faultInjectionTrack, "************Fault is activated**************\ncpu%d:In function %s, next addr for pc (in fetch2) is 0x%x -> 0x%x\n", cpu.cpuId(), funcName, oldNextAddr, pc.nextInstAddr());
+
+		
+		faultIsInjected=true;
+	}
+	*/	
 
     /* React to branches from Execute to update local branch prediction
      *  structures */
@@ -286,6 +324,7 @@ Fetch2::evaluate()
         /* Pack instructions into the output while we can.  This may involve
          * using more than one input line.  Note that lineWidth will be 0
          * for faulting lines */
+		unsigned int fetchCount=0;
         while (line_in &&
             (line_in->isFault() ||
                 inputIndex < line_in->lineWidth) && /* More input */
@@ -364,6 +403,194 @@ Fetch2::evaluate()
                     (line + inputIndex)));
 
                 if (!decoder->instReady()) {
+					std::string funcName="nothing";
+					Addr sym_addr;
+					debugSymbolTable->findNearestSymbol(cpu.getContext(0)->instAddr(), funcName, sym_addr);
+
+					//HwiSoo. fetchProfile for fault injection
+					if( (funcName[0] == 'F' &&  funcName[1] == 'U' && funcName[2] == 'N' && funcName[3] == 'C') || (funcName == "main") )
+					{
+						 //HWISOO. I need to check for this
+						 /*
+						unsigned int hwisoo_data=line[inputIndex];
+						hwisoo_data = (hwisoo_data|line[inputIndex+1]<<8);
+						hwisoo_data = (hwisoo_data|line[inputIndex+2]<<16);
+						hwisoo_data = (hwisoo_data|line[inputIndex+3]<<24);
+						*/
+						
+						
+						//DPRINTF(fetchAnotherProfile, "cpu%d:%x\n", cpu.cpuId(), hwisoo_data);
+						DPRINTF(fetchProfile, "cpu%d:%d:%x\n", cpu.cpuId(), (fetchCount), inst_word);
+						
+						//single store
+						//XXXX 01XX XXX0 XXXX XXXX XXXX XXXX XXXX (assumption: no undefined)
+						//0000 1100 0001 0000 0000 0000 0000 0000
+						TheISA::MachInst temp = 202375168; //0000 1100 0001 0000 0000 0000 0000 0000
+						temp = temp & inst_word;
+						//if it is store, it should be 
+						//0000 0100 0000 0000 0000 0000 0000 0000
+						
+						//0000 0100 0000 0000 0000 0000 0000 0000
+						//HWISOO. we just skip strh case (it's quite complex to distinguish from mul
+						
+						
+						//block data transfer
+						//XXXX 100X XXX0 XXXX XXXX XXXX XXXX XXXX
+						//0000 1110 0001 0000 0000 0000 0000 0000
+						TheISA::MachInst temp2 = 235929600; //0000 1110 0001 0000 0000 0000 0000 0000
+						temp2 = temp2 & inst_word;
+						//if it is stm, it should be 
+						//0000 1000 0000 0000 0000 0000 0000 0000
+						
+						
+						if(temp == 67108864 || temp2 == 134217728)
+						{
+							//DPRINTF(fetchExceptStoreProfile, "cpu%d:%d:%x:STORE\n", cpu.cpuId(), (fetchCount), inst_word);
+						}
+						else
+							DPRINTF(fetchExceptStoreProfile, "cpu%d:%d:%x\n", cpu.cpuId(), (fetchCount), inst_word);
+					}
+					fetchCount++;
+					//HWISOO. inject here and should check it really affects to decoded inst.
+					//HwiSoo. soft error Injection
+					if ( (!faultIsInjected) && (FIcomponent == 2) && (curTick() == FItick))
+					{
+						if(FIbit >= 32)
+						{
+							FIbit-=32;
+						}
+						else
+						{						
+							
+							TheISA::MachInst old_inst_word = inst_word;
+							TheISA::MachInst temp = pow (2, FIbit);
+							inst_word = inst_word xor temp;
+								
+							DPRINTF(faultInjectionTrack, "************Fault is activated**************\ncpu%d:fetch data to decode will be %x -> %x\n", cpu.cpuId(), old_inst_word, inst_word);
+							
+							faultIsInjected=true;
+						}
+					}	
+					
+					if ( (!faultIsInjected) && (FIcomponent == 100) && (curTick() == FItick))
+					{
+						if(FIbit >= 32)
+						{
+							FIbit-=32;
+						}
+						else
+						{						
+							
+							TheISA::MachInst old_inst_word = inst_word;
+							TheISA::MachInst temp;
+							temp = pow(2, 27); //should be 0
+							temp = ~temp;
+							inst_word = inst_word & temp;
+							
+							DPRINTF(faultInjectionTrack, "************Fault is activated**************\ncpu%d:fetch data to decode will be %x -> %x by %x\n", cpu.cpuId(), old_inst_word, inst_word, temp);
+							
+							temp = pow(2, 26); //should be 1
+							inst_word = inst_word | temp;
+							
+							DPRINTF(faultInjectionTrack, "************Fault is activated**************\ncpu%d:fetch data to decode will be %x -> %x by %x\n", cpu.cpuId(), old_inst_word, inst_word, temp);
+							
+							temp = pow(2, 20); //should be 0
+							temp = ~temp;
+							inst_word = inst_word & temp;
+							
+							DPRINTF(faultInjectionTrack, "************Fault is activated**************\ncpu%d:fetch data to decode will be %x -> %x by %x\n", cpu.cpuId(), old_inst_word, inst_word, temp);
+							
+							temp = pow(2, 25); //if this one is 1
+							temp = inst_word & temp;
+							if (temp != 0)
+							{
+								temp = pow(2, 4); //should be 0
+								temp = ~temp;
+								inst_word = inst_word & temp;
+								
+								DPRINTF(faultInjectionTrack, "************Fault is activated**************\ncpu%d:fetch data to decode will be %x -> %x by %x\n", cpu.cpuId(), old_inst_word, inst_word, temp);
+							}
+							
+								
+							DPRINTF(faultInjectionTrack, "************Fault is activated**************\ncpu%d:fetch data to decode will be %x -> %x\n", cpu.cpuId(), old_inst_word, inst_word);
+							
+							faultIsInjected=true;
+						}
+					}	
+					
+					else if ( (!faultIsInjected) && (FIcomponent == 101) && (curTick() == FItick))
+					{
+						if(FIbit >= 32)
+						{
+							FIbit-=32;
+						}
+						else
+						{						
+							
+							TheISA::MachInst old_inst_word = inst_word;
+							inst_word = 3785363457;
+							
+							DPRINTF(faultInjectionTrack, "************Fault is activated**************\ncpu%d:fetch data to decode will be %x -> %x\n", cpu.cpuId(), old_inst_word, inst_word);
+							
+							faultIsInjected=true;
+						}
+					}
+
+					
+					//HwiSoo. permanent fault injection
+					else if(permanentInjection && FIcomponent==12)
+					{
+						if( ( (funcName[0] == 'F' &&  funcName[1] == 'U' && funcName[2] == 'N' && funcName[3] == 'C') || (funcName == "main") ) && cpu.getContext(0)->insideNonRepeatable==false)
+						{
+							if ((fetchCount==0 && FIbit<64)|| (fetchCount==1 && FIbit>=64))
+							{
+								if((FIbit%64)<32) //make 0
+								{
+									TheISA::MachInst temp = pow (2, (FIbit%64));
+									inst_word = inst_word & (~temp);
+								}
+								else //make 1
+								{
+									TheISA::MachInst temp = pow (2, ((FIbit-32)%64));
+									inst_word = inst_word | temp;
+								}
+								
+								
+							}
+							/*
+							if (FIbit<64) // make 0
+							{
+								unsigned int injectByte = (int)FIbit/8;
+								uint8_t injectBit = (pow (2, FIbit%8)); 
+								//injectBit = ~injectBit;
+								uint8_t old_data = line[inputIndex+injectByte];
+								
+								if ((old_data&injectBit) != 0)
+									line[inputIndex+injectByte]=old_data xor injectBit;
+							}
+							
+							else
+							{
+								unsigned int injectByte = ((int)FIbit-)/8;
+								uint8_t injectBit = (pow (2, FIbit%8)); 
+								//injectBit = ~injectBit; //ex) 11111011
+								uint8_t old_data = line[inputIndex+injectByte];
+								
+								if (~(old_data|(~injectBit)) != 0) //note that ~injectBit
+									line[inputIndex+injectByte]=old_data xor injectBit;		
+							}
+							*/
+						}
+						
+						
+						
+					}
+					
+					
+					
+					
+					
+					
                     decoder->moreBytes(pc,
                         line_in->lineBaseAddr + inputIndex, inst_word);
                     DPRINTF(Fetch, "Offering MachInst to decoder"
@@ -388,6 +615,26 @@ Fetch2::evaluate()
                     /* Note that the decoder can update the given PC.
                      *  Remember not to assign it until *after* calling
                      *  decode */
+					 
+					
+					
+					/*
+	//if ( (!faultIsInjected) && (oldFIcomponent == 1) && (curTick() >= FItick))
+	{
+		std::string funcName="nothing";
+		Addr sym_addr;
+		debugSymbolTable->findNearestSymbol(cpu.getContext(0)->instAddr(), funcName, sym_addr);
+		
+		Addr oldNextAddr = pc.pc();
+		Addr injectBit = pow (2, (FIbit));
+		pc.pc(oldNextAddr xor injectBit);
+		DPRINTF(faultInjectionTrack, "************Fault is activated**************\ncpu%d:In function %s, addr for pc (in fetch2) is 0x%x -> 0x%x\n", cpu.cpuId(), funcName, oldNextAddr, pc.instAddr());
+
+		
+		faultIsInjected=true;
+	}
+	*/
+					
                     StaticInstPtr decoded_inst = decoder->decode(pc);
                     dyn_inst->staticInst = decoded_inst;
 
@@ -419,8 +666,28 @@ Fetch2::evaluate()
                     pc.nupc(1);
 #endif
 
+
+
+
                     /* Advance PC for the next instruction */
+
                     TheISA::advancePC(pc, decoded_inst);
+					/*
+//if ( (!faultIsInjected) && (oldFIcomponent == 1) && (curTick() >= FItick))
+	{
+		std::string funcName="nothing";
+		Addr sym_addr;
+		debugSymbolTable->findNearestSymbol(cpu.getContext(0)->instAddr(), funcName, sym_addr);
+		
+		//TheISA::advancePC(pc, decoded_inst);
+		//TheISA::advancePC(pc, decoded_inst);
+		TheISA::advancePC(pc, decoded_inst);
+		DPRINTF(faultInjectionTrack, "************Fault is activated**************\ncpu%d:advancePC is called 1 more times\n", cpu.cpuId());
+
+		
+		faultIsInjected=true;
+	}
+	*/
 
                     /* Predict any branches and issue a branch if
                      *  necessary */

@@ -292,7 +292,8 @@ class ThreadContext
     virtual CCReg readCCRegFlat(int idx) = 0;
     virtual void setCCRegFlat(int idx, CCReg val) = 0;
     /** @} */
-
+	//HwiSoo
+	bool insideNonRepeatable = false;
 };
 
 /**
@@ -487,6 +488,9 @@ class ProxyThreadContext : public ThreadContext
 
     void setCCRegFlat(int idx, CCReg val)
     { actualTC->setCCRegFlat(idx, val); }
+	
+
+	
 };
 
 /** @{ */

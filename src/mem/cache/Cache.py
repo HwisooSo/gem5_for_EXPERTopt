@@ -84,6 +84,18 @@ class BaseCache(MemObject):
 
     system = Param.System(Parent.any, "System we belong to")
 
+    
+########################################moslem fault injection
+    FIcore = Param.UInt64(0, "The core that fault injection will be injected")
+    FIcomponent = Param.UInt64(0, "The target component for cache fault injection can be 21/22/31/32 for l1d temp/l1i temp/l1d per/l1i per")
+    FItick = Param.UInt64(0, "The tick that fault injection will be injected")
+    FIentry = Param.UInt64(0, "The harware entry for fault injection")
+    FIbit = Param.UInt64(0, "The harware bit for fault injection")
+#################################
+
+    
+    
+    
 # Enum for cache clusivity, currently mostly inclusive or mostly
 # exclusive.
 class Clusivity(Enum): vals = ['mostly_incl', 'mostly_excl']

@@ -59,6 +59,8 @@
 #include "debug/CachePort.hh"
 #include "debug/CacheTags.hh"
 #include "debug/CacheVerbose.hh"
+#include "debug/CacheProfile.hh"
+#include "debug/CacheHwisooDebug.hh"
 #include "mem/cache/blk.hh"
 #include "mem/cache/mshr.hh"
 #include "mem/cache/prefetch/base.hh"
@@ -87,6 +89,35 @@ Cache::Cache(const CacheParams *p)
     tags->setCache(this);
     if (prefetcher)
         prefetcher->setCache(this);
+	
+	//long FIcomponent;
+	//long FItick;
+	//long FIentry;
+	//long FIbit;
+	//int FIcore;
+
+	
+	//HWISOO
+	if(p->name.find("system.cpu")!=std::string::npos)
+	{
+		unsigned int coreNumber=std::stoi(p->name.substr(p->name.find("system.cpu")+10,1));
+		//std::string cacheName=p->name.substr(p->name.find("system.cpu"+cpuName+".")+13);
+		unsigned int isDcacheIcache=0; //0->none. 1->dcache. 2->icache
+		
+		
+		if(p->name.find("dcache")!=std::string::npos)
+			isDcacheIcache=1;
+		else if(p->name.find("icache")!=std::string::npos)
+			isDcacheIcache=2;
+		
+		if(coreNumber == p->FIcore)
+		{
+			if(isDcacheIcache==1 && (p->FIcomponent == 21 || p->FIcomponent == 31))
+				tags->faultIsInjected=false;
+			else if(isDcacheIcache==2 && (p->FIcomponent == 22 || p->FIcomponent == 32))
+				tags->faultIsInjected=false;
+		}
+	}
 }
 
 Cache::~Cache()
@@ -346,11 +377,31 @@ Cache::access(PacketPtr pkt, CacheBlk *&blk, Cycles &lat,
         pkt->req->contextId() : InvalidContextID;
     // Here lat is the value passed as parameter to accessBlock() function
     // that can modify its value.
+	if(pkt->req->hasPC())
+	{
+		//DPRINTF(CacheProfile, "PCTest:%x\n", pkt->req->getPC());
+		//currentInstrPC=pkt->req->getPC();
+		tags->currentInstrPC=pkt->req->getPC();
+	}
+
     blk = tags->accessBlock(pkt->getAddr(), pkt->isSecure(), lat, id);
 
-    DPRINTF(Cache, "%s%s addr %#llx size %d (%s) %s\n", pkt->cmdString(),
+	//HWISOO
+	//if(blk)//hit
+		//DPRINTF(CacheProfile, "%s/%s/%d/hit\n", name() ,pkt->cmdString() ,pkt->getSize());
+	//else
+		//DPRINTF(CacheHwisooDebug, "PCTest:noPC\n");
+
+    /*DPRINTF(Cache, "%s%s addr %#llx size %d (%s) %s\n", pkt->cmdString(),
             pkt->req->isInstFetch() ? " (ifetch)" : "",
             pkt->getAddr(), pkt->getSize(), pkt->isSecure() ? "s" : "ns",
+            blk ? "hit " + blk->print() : "miss");*/
+			
+			
+	//HWISOO
+	DPRINTF(Cache, "%s%s addr %#llx (set %d) size %d (%s) %s\n", pkt->cmdString(),
+            pkt->req->isInstFetch() ? " (ifetch)" : "",
+            pkt->getAddr(), tags->extractSet(pkt->getAddr()), pkt->getSize(), pkt->isSecure() ? "s" : "ns",
             blk ? "hit " + blk->print() : "miss");
 
 
@@ -418,6 +469,10 @@ Cache::access(PacketPtr pkt, CacheBlk *&blk, Cycles &lat,
                 incMissCount(pkt);
                 return false;
             }
+			
+			//HWISOO
+			//DPRINTF(CacheProfile, "%s/%s/%d/miss(writeBack)\n", name() ,pkt->cmdString() ,pkt->getSize());
+			
             tags->insertBlock(pkt, blk);
 
             blk->status = (BlkValid | BlkReadable);

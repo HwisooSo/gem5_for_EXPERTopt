@@ -1023,6 +1023,14 @@ class Packet : public Printable
             // one to the other, e.g. a forwarded response to a response
             std::memcpy(getPtr<uint8_t>(), p, getSize());
     }
+	
+    //HwiSoo, function for fault injection
+    void
+    flipData (unsigned int injectIndex, unsigned int injectBit);
+	
+    uint8_t
+    getDataForFI (unsigned int byte);
+
 
     /**
      * Copy data into the packet from the provided block pointer,

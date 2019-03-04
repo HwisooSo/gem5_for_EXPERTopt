@@ -246,7 +246,12 @@ for i in xrange(np):
 
     if options.checker:
         system.cpu[i].addCheckerCpu()
-
+    system.cpu[i].FIcore  = options.FIcore #moselme ///Fault injection
+    system.cpu[i].FIcomponent  = options.FIcomponent #moselme ///Fault injection
+    system.cpu[i].FItick = options.FItick #moselme ///Fault injection
+    system.cpu[i].FIentry = options.FIentry #moselme ///Fault injection
+    system.cpu[i].FIbit = options.FIbit #moselme ///Fault injection
+    system.cpu[i].MaxTick = options.MaxTick #moselme ///Fault injection
     system.cpu[i].createThreads()
 
 if options.ruby:

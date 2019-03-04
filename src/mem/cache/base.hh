@@ -87,6 +87,8 @@ class BaseCache : public MemObject
     };
 
   public:
+  
+  
     /**
      * Reasons for caches to be blocked.
      */

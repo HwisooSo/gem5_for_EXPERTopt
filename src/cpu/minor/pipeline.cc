@@ -48,6 +48,7 @@
 #include "debug/MinorCPU.hh"
 #include "debug/MinorTrace.hh"
 #include "debug/Quiesce.hh"
+#include "debug/faultInjectionTrack.hh"
 
 namespace Minor
 {
@@ -125,13 +126,85 @@ Pipeline::evaluate()
     /* Note that it's important to evaluate the stages in order to allow
      *  'immediate', 0-time-offset TimeBuffer activity to be visible from
      *  later stages to earlier ones in the same cycle */
+	
+	
+	//HWISOO
+	//DPRINTF(faultInjectionTrack, "************testPC_BEFORE_RUN**************cpu%d:pc.instAddr:%x:pc.nextInstAddr:%x\n", cpu.cpuId(), cpu.getContext(0)->pcState().instAddr(), cpu.getContext(0)->pcState().nextInstAddr());
+	
+	//HwiSoo. injection information for fetch1
+	if((execute.FIcomponent == 2 || execute.FIcomponent == 100 || execute.FIcomponent == 101) && !execute.faultIsInjected)
+	{
+		if(cpu.cpuId() == execute.FIcore)
+		{
+			/*
+			fetch1.FItick = execute.FItick;
+			fetch1.FIentry = execute.FIentry;
+			fetch1.FIbit = execute.FIbit;
+			fetch1.faultIsInjected = false;
+			*/
+			fetch2.FItick = execute.FItick;
+			fetch2.FIentry = execute.FIentry;
+			fetch2.FIbit = execute.FIbit;
+			fetch2.faultIsInjected = false;
+			fetch2.FIcomponent = execute.FIcomponent;
+		}
+		execute.faultIsInjected = true;		
+	}
+	
+	/*
+	//HWISOO: This was for pc injection, but most of cases it does not affect system 
+	else if(execute.oldFIcomponent == 1 && execute.FIentry == 15 && !execute.faultIsInjected)
+	{
+		if(cpu.cpuId() == execute.FIcore)
+		{
+
+
+
+			
+			fetch2.FItick = execute.FItick;
+			fetch2.FIentry = execute.FIentry;
+			fetch2.FIbit = execute.FIbit;
+			fetch2.faultIsInjected = false;
+			fetch2.FIcomponent = execute.FIcomponent;			
+			
+		}
+		execute.faultIsInjected = true;		
+	}
+	
+	*/
+	
+	else if(!execute.faultIsInjected && execute.FIcomponent == 12 && curTick() >= execute.FItick)
+	{
+		if(cpu.cpuId() == execute.FIcore)
+		{
+			/*
+			fetch1.FIbit = execute.FIbit;
+			fetch1.permanentInjection = true;
+			*/
+			fetch2.FIbit = execute.FIbit;
+			fetch2.FIcomponent = execute.FIcomponent;
+			fetch2.permanentInjection = true;
+		}
+		execute.faultIsInjected=true;
+	}
+	 
+	 
     execute.evaluate();
+	
+	//HWISOO
+	//DPRINTF(faultInjectionTrack, "************testPC_AFTER_EXE**************cpu%d:pc.instAddr:%x:pc.nextInstAddr:%x\n", cpu.cpuId(), cpu.getContext(0)->pcState().instAddr(), cpu.getContext(0)->pcState().nextInstAddr());
+	
     decode.evaluate();
     fetch2.evaluate();
     fetch1.evaluate();
 
     if (DTRACE(MinorTrace))
         minorTrace();
+	
+	
+	//HWISOO
+	//DPRINTF(faultInjectionTrack, "************testPC_AFTER_RUN**************cpu%d:pc.instAddr:%x:pc.nextInstAddr:%x\n", cpu.cpuId(), cpu.getContext(0)->pcState().instAddr(), cpu.getContext(0)->pcState().nextInstAddr());
+	
 
     /* Update the time buffers after the stages */
     f1ToF2.evaluate();
@@ -172,6 +245,9 @@ Pipeline::evaluate()
             stop();
         }
     }
+	
+	//HWISOO
+	//DPRINTF(faultInjectionTrack, "************testPC_AFTER_ALL**************cpu%d:pc.instAddr:%x:pc.nextInstAddr:%x\n", cpu.cpuId(), cpu.getContext(0)->pcState().instAddr(), cpu.getContext(0)->pcState().nextInstAddr());
 }
 
 MinorCPU::MinorCPUPort &

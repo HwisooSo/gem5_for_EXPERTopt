@@ -49,6 +49,10 @@
 #include "cpu/minor/pipeline.hh"
 #include "debug/Activity.hh"
 #include "debug/MinorMem.hh"
+#include "debug/faultInjectionTrack.hh"
+
+//HWISOO
+unsigned int lsqPushCount = 0;
 
 namespace Minor
 {
@@ -592,8 +596,36 @@ LSQ::SplitDataRequest::retireResponse(PacketPtr response)
         }
 
         if (isLoad) {
+			//HWISOO_FI
+			std::string funcName="nothing";
+			Addr sym_addr;
+			debugSymbolTable->findNearestSymbol(port.cpu.getContext(0)->instAddr(), funcName, sym_addr);
+
+			
+			//HWISOO_ALTERNATIVES
+			/*
+			if ( (port.cpu.cpuId() == port.execute.FIcore) && (!port.execute.faultIsInjected) && (port.execute.FIcomponent == 10) && (curTick() == port.execute.FItick) && (port.execute.FIentry == inst->id.execSeqNum))
+			{
+				if(port.execute.FIbit<128) // data
+				{
+					
+					int injectByte = port.execute.FIbit / 8;
+					uint8_t injectBit = pow (2, port.execute.FIbit %8);
+					uint8_t dataByte = data[injectByte];
+					DPRINTFS(faultInjectionTrack, (&port), "************Fault is activating**************\nCPU:%d:In function %s and in LSQ, instruction %s original data[%d] is %d\n", port.cpu.cpuId(), funcName, inst->staticInst->disassemble(0), injectByte, data[injectByte]);
+					dataByte = dataByte xor injectBit;
+					data[injectByte] = dataByte;
+					DPRINTFS(faultInjectionTrack, (&port), "************Fault is activated**************\nCPU:%d:In function %s and in LSQ, instruction %s data[%d] is now %d\n", port.cpu.cpuId(), funcName, inst->staticInst->disassemble(0), injectByte, data[injectByte]);
+					
+					//HwiSoo. load data will be changed in set~~
+				}
+			}
+			*/
+			
+			
             DPRINTFS(MinorMem, (&port), "Copying read data\n");
             std::memcpy(packet->getPtr<uint8_t>(), data, request.getSize());
+	
         }
         packet->makeResponse();
     }
@@ -1462,10 +1494,68 @@ LSQ::needsToTick()
     return ret;
 }
 
+
+
 void
 LSQ::pushRequest(MinorDynInstPtr inst, bool isLoad, uint8_t *data,
     unsigned int size, Addr addr, unsigned int flags, uint64_t *res)
 {
+	//HWISOO_FI
+	std::string funcName="nothing";
+	Addr sym_addr;
+	debugSymbolTable->findNearestSymbol(cpu.getContext(0)->instAddr(), funcName, sym_addr);
+
+	//HWISOO_ALTERNATIVES
+	//HWISOO_FI_profiling
+	/*
+	if( (funcName[0] == 'F' &&  funcName[1] == 'U' && funcName[2] == 'N' && funcName[3] == 'C') || (funcName == "main") )
+	{
+		if(isLoad)
+			DPRINTF(MemAccesses, "cpu%d/%s/%d/readMem/0x%x/%d/Test_opClass:%s/FU:%d\n", cpu.cpuId(), inst->staticInst->disassemble(0), inst->id.execSeqNum, addr, size, Enums::OpClassStrings[inst->staticInst->opClass()],inst->fuIndex);
+		else
+			DPRINTF(MemAccesses, "cpu%d/%s/%d/writeMem/0x%x/%d/Test_opClass:%s/FU:%d\n", cpu.cpuId(), inst->staticInst->disassemble(0), inst->id.execSeqNum, addr, size, Enums::OpClassStrings[inst->staticInst->opClass()],inst->fuIndex);
+	}
+	
+
+	
+	if ( (cpu.cpuId() == execute.FIcore) && (!execute.faultIsInjected) && (execute.FIcomponent == 10) && (curTick() == execute.FItick) && (execute.FIentry == inst->id.execSeqNum))
+	{
+		if(execute.FIbit<128 && !isLoad) // data
+		{
+			
+			int injectByte = execute.FIbit / 8;
+			uint8_t injectBit = pow (2, execute.FIbit %8);
+			uint8_t dataByte = data[injectByte];
+			DPRINTF(faultInjectionTrack, "************Fault is activating**************\nCPU:%d:In function %s and in LSQ, instruction %s original data[%d] is %d\n", cpu.cpuId(), funcName, inst->staticInst->disassemble(0), injectByte, data[injectByte]);
+			dataByte = dataByte xor injectBit;
+			data[injectByte] = dataByte;
+			DPRINTF(faultInjectionTrack, "************Fault is activated**************\nCPU:%d:In function %s and in LSQ, instruction %s data[%d] is now %d\n", cpu.cpuId(), funcName, inst->staticInst->disassemble(0), injectByte, data[injectByte]);
+			
+			//HwiSoo. load data will be changed in set~~
+		}
+		else if(execute.FIbit>=256 && execute.FIbit<288) // addr
+		{
+			Addr originalAddr = addr;
+			Addr injectBit = pow (2, (execute.FIbit-256));
+			addr = addr xor injectBit;
+			DPRINTF(faultInjectionTrack, "************Fault is activated**************\nCPU:%d:In function %s and in LSQ, instruction %s addr is 0x%x -> 0x%x\n", cpu.cpuId(), funcName, inst->staticInst->disassemble(0), originalAddr, addr);
+			execute.faultIsInjected=true;
+		}
+		else if(execute.FIbit>=320 && execute.FIbit<324) //size
+		{
+			unsigned int originalSize = size;
+			
+			size = size << ((execute.FIbit - 320) +1);
+				if(size>=32)
+			size/=32;
+			
+			DPRINTF(faultInjectionTrack, "************Fault is activated**************\nCPU:%d:In function %s and in LSQ, instruction %s addr is 0x%x -> 0x%x\n", cpu.cpuId(), funcName, inst->staticInst->disassemble(0), originalSize, size);
+			execute.faultIsInjected=true;
+		}
+	}
+	
+	*/
+	
     bool needs_burst = transferNeedsBurst(addr, size, lineWidth);
     LSQRequestPtr request;
 
@@ -1510,6 +1600,9 @@ LSQ::pushRequest(MinorDynInstPtr inst, bool isLoad, uint8_t *data,
 
     requests.push(request);
     request->startAddrTranslation();
+	
+	//HWISOO
+	lsqPushCount = (lsqPushCount+1)%5;
 }
 
 void

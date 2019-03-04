@@ -54,7 +54,12 @@
 #include "debug/MinorMem.hh"
 #include "debug/MinorTrace.hh"
 #include "debug/PCEvent.hh"
-
+#include "debug/FIinformation.hh"
+#include "debug/TickMain.hh"
+#include "debug/faultInjectionTrack.hh"
+#include "sim/stat_control.hh"
+#include "debug/branchProfile.hh"
+#include "debug/FUTest.hh"
 namespace Minor
 {
 
@@ -86,8 +91,15 @@ Execute::Execute(const std::string &name_,
         params.executeLSQTransfersQueueSize,
         params.executeLSQStoreBufferSize,
         params.executeLSQMaxStoreBufferStoresPerCycle),
-    scoreboard(name_ + ".scoreboard"),
-    inputBuffer(name_ + ".inputBuffer", "insts",
+   	scoreboard(name_ + ".scoreboard"),
+	FIcore(params.FIcore), //Fault injection
+	FIcomponent(params.FIcomponent), //Fault injection
+	oldFIcomponent(-1), //Fault injection
+	FItick(params.FItick), //Fault injection
+	FIentry(params.FIentry), //Fault injection
+	FIbit(params.FIbit), //Fault injection
+	MaxTick(params.MaxTick), //Fault injection
+        inputBuffer(name_ + ".inputBuffer", "insts",
         params.executeInputBufferSize),
     inputIndex(0),
     lastCommitWasEndOfMacroop(true),
@@ -177,6 +189,13 @@ Execute::Execute(const std::string &name_,
     inFUMemInsts = new Queue<QueuedInst,
         ReportTraitsAdaptor<QueuedInst> >(
         name_ + ".inFUMemInsts", "insts", total_slots);
+
+// fault injection information
+    if (cpu.cpuId() == FIcore)
+    DPRINTF(FIinformation, " ***A single bit flip fault will be injected on core %d, harware component %s, entry/reg %d, bit number %d, @ tick:%d***\n", 
+                         FIcore, FIcomponent, FIentry, FIbit, FItick);
+
+
 }
 
 const ForwardInstData *
@@ -226,10 +245,112 @@ Execute::tryToBranch(MinorDynInstPtr inst, Fault fault, BranchData &branch)
 
     /* The reason for the branch data we're about to generate, set below */
     BranchData::Reason reason = BranchData::NoBranch;
+	
+	
+	if (inst->staticInst->isControl() ||
+        inst->staticInst->isSyscall())
+	{
+		//HwiSoo. Profiling
+		std::string funcName="nothing";
+		Addr sym_addr;
+		debugSymbolTable->findNearestSymbol(cpu.getContext(0)->instAddr(), funcName, sym_addr);
+		
+		if( (funcName[0] == 'F' &&  funcName[1] == 'U' && funcName[2] == 'N' && funcName[3] == 'C') || (funcName == "main") )
+		{
+			DPRINTF(branchProfile, "cpu%d/%s/%d/%d/%d/Test_opClass:%s/FU:%d\n", cpu.cpuId(), inst->staticInst->disassemble(0), inst->predictedTaken, force_branch, must_branch, Enums::OpClassStrings[inst->staticInst->opClass()],inst->fuIndex);
+		}
+		
+		
+		//HwiSoo. soft error Injection
+		if ( (cpu.cpuId() == FIcore) && (!faultIsInjected) && (oldFIcomponent == 8) && (curTick() == FItick))
+		{
+			/*
+			//This is (half of) previous FI for EXPERT
+			//It seems that if we really want to flip it, then it's better to chagne "readCC" from exec_context.hh
+			if(FIentry == 0) // taken / not taken flip
+			{
+				if (must_branch)
+					DPRINTF(faultInjectionTrack, "************Fault is activated**************\nCPU:%d:In function %s, instruction %s will be taken -> not taken\n", cpu.cpuId(), funcName, inst->staticInst->disassemble(0));
+				else
+					DPRINTF(faultInjectionTrack, "************Fault is activated**************\nCPU:%d:In function %s, instruction %s will be not taken -> taken\n", cpu.cpuId(), funcName, inst->staticInst->disassemble(0));
+				
+				must_branch = !must_branch;
+			}
+			else if(FIentry == 1)
+			*/
+			{
+				Addr oldNextAddr = target.nextInstAddr();
+				Addr injectBit = pow (2, (FIbit));
+				target.npc(oldNextAddr xor injectBit);
+				DPRINTF(faultInjectionTrack, "************Fault is activated**************\nCPU:%d:In function %s, instruction %s next addr is 0x%x -> 0x%x\n", cpu.cpuId(), funcName, inst->staticInst->disassemble(0), oldNextAddr, target.nextInstAddr());
+				
+			}
+
+			faultIsInjected=true;
+
+		}
+		
+		//HwiSoo. permanent fault injection
+		if ( (cpu.cpuId() == FIcore) && (oldFIcomponent == 13))
+		{
+			if( ( (funcName[0] == 'F' &&  funcName[1] == 'U' && funcName[2] == 'N' && funcName[3] == 'C') || (funcName == "main") ) && curTick() >= FItick && cpu.getContext(0)->insideNonRepeatable==false)
+			{
+				/*
+				if(FIentry == 0) // taken / not taken flip
+				{
+					if(FIbit==0)
+						must_branch = false;
+					else
+						must_branch = true;
+					
+				}
+				else if(FIentry == 1)
+				*/
+				{
+					if(FIbit<32) //makes 0
+					{
+						Addr oldNextAddr = target.nextInstAddr();
+						Addr injectBit = pow (2, (FIbit));
+						injectBit = ~injectBit;
+						target.npc(oldNextAddr & injectBit);					
+					}
+					else //makes 1
+					{
+						Addr oldNextAddr = target.nextInstAddr();
+						Addr injectBit = pow (2, (FIbit-32));
+						target.npc(oldNextAddr | injectBit);
+					}
+				}
+			}
+
+		}
+		
+		
+	}
 
     if (fault == NoFault)
     {
-        TheISA::advancePC(target, inst->staticInst);
+		
+		//HWISOO: DEBUG
+		/*
+		std::string funcName="nothing";
+		Addr sym_addr;
+		debugSymbolTable->findNearestSymbol(cpu.getContext(0)->instAddr(), funcName, sym_addr);
+		TheISA::PCState oldTarget = target;
+		*/
+
+		
+        TheISA::advancePC(target, inst->staticInst); 
+		
+		/*
+		if( (funcName[0] == 'F' &&  funcName[1] == 'U' && funcName[2] == 'N' && funcName[3] == 'C') || (funcName == "main") )
+		{
+			DPRINTF(branchProfile, "cpu%d/TempDebug/%s/%s\n", cpu.cpuId() ,oldTarget, target);
+			if(oldTarget.npc() != target.pc())
+				DPRINTF(branchProfile, "HWISOO:CHECK\n", cpu.cpuId() ,oldTarget, target);
+		}
+		*/
+		
         thread->pcState(target);
 
         DPRINTF(Branch, "Advancing current PC from: %s to: %s\n",
@@ -354,6 +475,29 @@ Execute::handleMemResponse(MinorDynInstPtr inst,
             *inst, packet->getAddr(), packet->getSize());
 
         if (is_load && packet->getSize() > 0) {
+			//HWISOO
+			if ( (cpu.cpuId() == FIcore) && (!faultIsInjected) && (FIcomponent == 10) && (curTick() >= FItick) && (FIentry == inst->id.execSeqNum) && (FIbit<128))
+			{
+				if(FIbit<128) // data
+				{
+					
+					int injectByte = FIbit / 8;
+					//uint8_t injectBit = pow (2, FIbit %8);
+					//uint8_t dataByte = packet->getConstPtr<uint8_t>()[injectByte];
+					DPRINTF(faultInjectionTrack, "************Fault is activating**************\nCPU:%d:In function %s and in LSQ, instruction %s original data[%d] is %d\n", cpu.cpuId(), funcName, inst->staticInst->disassemble(0), injectByte, packet->getConstPtr<uint8_t>()[injectByte]);
+					//dataByte = dataByte xor injectBit;
+					//packet->getConstPtr<uint8_t>()[injectByte] = dataByte;
+					packet->flipData(injectByte, FIbit % 8);
+					DPRINTF(faultInjectionTrack, "************Fault is activated**************\nCPU:%d:In function %s and in LSQ, instruction %s data[%d] is now %d\n", cpu.cpuId(), funcName, inst->staticInst->disassemble(0), injectByte, packet->getConstPtr<uint8_t>()[injectByte]);
+					
+					//HwiSoo. load data will be changed in set~~ (of exec_context.hh)
+				}
+				
+				
+				
+			}
+			
+			
             DPRINTF(MinorMem, "Memory data[0]: 0x%x\n",
                 static_cast<unsigned int>(packet->getConstPtr<uint8_t>()[0]));
         }
@@ -655,6 +799,12 @@ Execute::issue(bool only_issue_microops)
                         DPRINTF(MinorExecute, "Issuing inst: %s"
                             " into FU %d\n", *inst,
                             fu_index);
+							
+						//HWISOO
+						DPRINTF(FUTest, "Issuing inst: %s"
+                            " into FU %d\n", *inst,
+                            fu_index);
+						
 
                         Cycles extra_dest_retire_lat = Cycles(0);
                         TimingExpr *extra_dest_retire_lat_expr = NULL;
@@ -868,6 +1018,10 @@ Execute::commitInst(MinorDynInstPtr inst, bool early_memory_issue,
     bool completed_inst = true;
     fault = NoFault;
 
+	//HWISOO
+	//DPRINTF(faultInjectionTrack, "************testPC_COMMI_TST**************cpu%d:pc.instAddr:%x:pc.nextInstAddr:%x\n", cpu.cpuId(), cpu.getContext(0)->pcState().instAddr(), cpu.getContext(0)->pcState().nextInstAddr());
+
+	
     /* Is the thread for this instruction suspended?  In that case, just
      *  stall as long as there are no pending interrupts */
     if (thread->status() == ThreadContext::Suspended &&
@@ -933,13 +1087,24 @@ Execute::commitInst(MinorDynInstPtr inst, bool early_memory_issue,
 
         completed_inst = false;
     } else {
-        ExecContext context(cpu, *cpu.threads[thread_id], *this, inst);
+		//HWISOO
+		//DPRINTF(faultInjectionTrack, "************testPC_EXECU_ELS**************cpu%d:pc.instAddr:%x:pc.nextInstAddr:%x\n", cpu.cpuId(), cpu.getContext(0)->pcState().instAddr(), cpu.getContext(0)->pcState().nextInstAddr());
+
+        ExecContext context(cpu, *cpu.threads[thread_id], *this, inst); //HWISOO. ridiculously, this changes pc 
 
         DPRINTF(MinorExecute, "Committing inst: %s\n", *inst);
 
+		//HWISOO
+		//DPRINTF(faultInjectionTrack, "************testPC_EXECU_CBE**************cpu%d:pc.instAddr:%x:pc.nextInstAddr:%x\n", cpu.cpuId(), cpu.getContext(0)->pcState().instAddr(), cpu.getContext(0)->pcState().nextInstAddr());
+		
+		
         fault = inst->staticInst->execute(&context,
             inst->traceData);
 
+		//HWISOO
+		//DPRINTF(faultInjectionTrack, "************testPC_EXECU_CME**************cpu%d:pc.instAddr:%x:pc.nextInstAddr:%x\n", cpu.cpuId(), cpu.getContext(0)->pcState().instAddr(), cpu.getContext(0)->pcState().nextInstAddr());
+
+			
         /* Set the predicate for tracing and dump */
         if (inst->traceData)
             inst->traceData->setPredicate(context.readPredicate());
@@ -953,6 +1118,7 @@ Execute::commitInst(MinorDynInstPtr inst, bool early_memory_issue,
         }
 
         doInstCommitAccounting(inst);
+
         tryToBranch(inst, fault, branch);
     }
 
@@ -1405,6 +1571,11 @@ Execute::evaluate()
         /* Empty the instsBeingCommitted for MinorTrace */
         instsBeingCommitted.bubbleFill();
     }
+	
+	//HWISOO
+	//DPRINTF(faultInjectionTrack, "************testPC_EXECU_COM**************cpu%d:pc.instAddr:%x:pc.nextInstAddr:%x\n", cpu.cpuId(), cpu.getContext(0)->pcState().instAddr(), cpu.getContext(0)->pcState().nextInstAddr());
+	
+	
 
     /* THREAD threadId on isInterrupted */
     /* Act on interrupts */
@@ -1413,6 +1584,9 @@ Execute::evaluate()
         /* Clear interrupted if no interrupt was actually waiting */
         interrupted = took_interrupt;
     }
+	
+	//HWISOO
+	//DPRINTF(faultInjectionTrack, "************testPC_EXECU_CO1**************cpu%d:pc.instAddr:%x:pc.nextInstAddr:%x\n", cpu.cpuId(), cpu.getContext(0)->pcState().instAddr(), cpu.getContext(0)->pcState().nextInstAddr());
 
     if (took_interrupt) {
         /* Do no commit/issue this cycle */
@@ -1437,7 +1611,8 @@ Execute::evaluate()
             if (drainState == DrainCurrentInst) {
                 /* Commit only micro-ops, don't kill anything else */
                 commit(true, false, branch);
-
+	//HWISOO
+	//DPRINTF(faultInjectionTrack, "************testPC_EXECU_C11**************cpu%d:pc.instAddr:%x:pc.nextInstAddr:%x\n", cpu.cpuId(), cpu.getContext(0)->pcState().instAddr(), cpu.getContext(0)->pcState().nextInstAddr());
                 if (isInbetweenInsts())
                     setDrainState(DrainHaltFetch);
 
@@ -1448,11 +1623,15 @@ Execute::evaluate()
                 while (getInput())
                     popInput();
                 commit(false, true, branch);
+//HWISOO
+	//DPRINTF(faultInjectionTrack, "************testPC_EXECU_C12**************cpu%d:pc.instAddr:%x:pc.nextInstAddr:%x\n", cpu.cpuId(), cpu.getContext(0)->pcState().instAddr(), cpu.getContext(0)->pcState().nextInstAddr());
             }
         } else {
             /* Commit micro-ops only if interrupted.  Otherwise, commit
              *  anything you like */
             commit(interrupted, false, branch);
+//HWISOO
+	//DPRINTF(faultInjectionTrack, "************testPC_EXECU_C13**************cpu%d:pc.instAddr:%x:pc.nextInstAddr:%x\n", cpu.cpuId(), cpu.getContext(0)->pcState().instAddr(), cpu.getContext(0)->pcState().nextInstAddr());
         }
 
         /* This will issue merrily even when interrupted in the sure and
@@ -1461,6 +1640,10 @@ Execute::evaluate()
             num_issued = issue(false);
     }
 
+//HWISOO
+	//DPRINTF(faultInjectionTrack, "************testPC_EXECU_CO2**************cpu%d:pc.instAddr:%x:pc.nextInstAddr:%x\n", cpu.cpuId(), cpu.getContext(0)->pcState().instAddr(), cpu.getContext(0)->pcState().nextInstAddr());
+	
+	
     /* Halt fetch, but don't do it until we have the current instruction in
      *  the bag */
     if (drainState == DrainHaltFetch) {
@@ -1488,6 +1671,10 @@ Execute::evaluate()
             }
         }
     }
+	
+//HWISOO
+	//DPRINTF(faultInjectionTrack, "************testPC_EXECU_CO3**************cpu%d:pc.instAddr:%x:pc.nextInstAddr:%x\n", cpu.cpuId(), cpu.getContext(0)->pcState().instAddr(), cpu.getContext(0)->pcState().nextInstAddr());
+	
 
     bool becoming_stalled = true;
 
@@ -1567,8 +1754,117 @@ Execute::evaluate()
 
     /* Make sure the input (if any left) is pushed */
     inputBuffer.pushTail();
-}
+/// moslem for FI
+//if (need_to_tick) //HwiSoo
+{
+    checkMaxTick(curTick());
+    std::string funcName="nothing";
+	Addr sym_addr;
+	debugSymbolTable->findNearestSymbol(cpu.getContext(0)->instAddr(), funcName, sym_addr);
 
+    if( (funcName[0] == 'F' &&  funcName[1] == 'U' && funcName[2] == 'N' && funcName[3] == 'C') || (funcName == "main"))
+   {
+      DPRINTF(TickMain, "@ Tick:%d: FunctionaName:=%s: is running on CPU:%d\n",curTick(),funcName,cpu.cpuId());
+
+      cpu.stats.tickCyclesMain++;
+   }
+///////////////////RF fault injection
+if (FIcore == cpu.cpuId())
+{
+	if ((FIcomponent == 1) && (curTick() > FItick) && (!faultIsInjected))
+	{
+		if(FIentry < 15)
+		{
+			unsigned long trueValue=cpu.threads[0]->readIntReg(FIentry);
+			unsigned long temp = pow (2, FIbit);
+			unsigned long faultyValue=trueValue xor temp;
+			cpu.threads[0]->setIntReg(FIentry, faultyValue);
+			DPRINTF(faultInjectionTrack, "CPU %s: In Function: %s fault is injected on the integer register %s, true value was %s and the fliped bit is %s, so the faulty value is %s\n",cpu.cpuId(), funcName, FIentry, trueValue, FIbit, cpu.threads[0]->readIntReg(FIentry));
+		}
+		else if (FIentry>=100 && FIentry<148)
+		{
+			int targetFloatRegister = FIentry-100;
+			unsigned long trueValue=cpu.threads[0]->readFloatRegBits(targetFloatRegister);
+			unsigned long temp = pow (2, FIbit);
+			unsigned long faultyValue=trueValue xor temp;
+			cpu.threads[0]->setFloatRegBits(targetFloatRegister, faultyValue);
+			DPRINTF(faultInjectionTrack, "CPU %s: In Function: %s fault is injected on the float/simd register %s, true value was %s and the fliped bit is %s, so the faulty value is %s\n",cpu.cpuId(), funcName, targetFloatRegister, trueValue, FIbit, cpu.threads[0]->readFloatRegBits(targetFloatRegister));			
+		}
+		else
+			DPRINTF(faultInjectionTrack, "FAULT INJECTION FAILURE: wrong FIentry for register\n");
+		
+		//It does not work
+		/*
+		else //FI to PC
+		{
+			
+			
+			TheISA::PCState target = cpu.threads[0]->pcState();
+			Addr oldNextAddr = target.nextInstAddr();
+			Addr injectBit = pow (2, (FIbit));
+			target.npc(oldNextAddr xor injectBit);
+			
+			cpu.threads[0]->pcState(target);
+			DPRINTF(faultInjectionTrack, "CPU %s: In Function: %s fault is injected on next pc (%s), true value was %x and the fliped bit is %s, so the faulty value is %x\n",cpu.cpuId(), funcName, FIentry, oldNextAddr, FIbit, cpu.threads[0]->pcState().npc());
+		}
+		*/
+		faultIsInjected=true;
+    }
+    else if(FIcomponent == 11 && curTick() >= FItick )
+    {
+		if( ( (funcName[0] == 'F' &&  funcName[1] == 'U' && funcName[2] == 'N' && funcName[3] == 'C') || (funcName == "main") ) && curTick() >= FItick && cpu.getContext(0)->insideNonRepeatable==false)
+		{
+			if(FIentry<15)
+			{
+				if(FIbit<32) //makes 0
+				{
+					unsigned long trueValue=cpu.threads[0]->readIntReg(FIentry);
+					unsigned long temp = pow (2, FIbit);
+					unsigned long faultyValue=trueValue & (~temp);
+					cpu.threads[0]->setIntReg(FIentry, faultyValue);
+				}
+				else // makes 1
+				{
+					unsigned long trueValue=cpu.threads[0]->readIntReg(FIentry);
+					unsigned long temp = pow (2, FIbit-32);
+					unsigned long faultyValue=trueValue | (temp);
+					cpu.threads[0]->setIntReg(FIentry, faultyValue);            
+				}
+			}
+			else if (FIentry>=100 && FIentry<148)
+			{
+				int targetFloatRegister = FIentry-100;
+				if(FIbit<32) //makes 0
+				{
+					unsigned long trueValue=cpu.threads[0]->readFloatRegBits(targetFloatRegister);
+					unsigned long temp = pow (2, FIbit);
+					unsigned long faultyValue=trueValue & (~temp);
+					cpu.threads[0]->setFloatRegBits(targetFloatRegister, faultyValue);
+				}
+				else // makes 1
+				{
+					unsigned long trueValue=cpu.threads[0]->readFloatRegBits(targetFloatRegister);
+					unsigned long temp = pow (2, FIbit-32);
+					unsigned long faultyValue=trueValue | (temp);
+					cpu.threads[0]->setFloatRegBits(targetFloatRegister, faultyValue);            
+				}
+				
+			}
+        }
+        
+        
+    }
+    
+    
+	
+    
+    
+    
+//////////////
+
+}
+}
+}
 void
 Execute::wakeupFetch(BranchData::Reason reason)
 {

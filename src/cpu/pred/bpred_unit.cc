@@ -52,6 +52,7 @@
 #include "base/trace.hh"
 #include "config/the_isa.hh"
 #include "debug/Branch.hh"
+//#include "debug/bpredProfile.hh"
 
 BPredUnit::BPredUnit(const Params *params)
     : SimObject(params),
@@ -151,7 +152,10 @@ BPredUnit::predict(const StaticInstPtr &inst, const InstSeqNum &seqNum,
     // If so, get its target addr either from the BTB or the RAS.
     // Save off record of branch stuff so the RAS can be fixed
     // up once it's done.
+	
 
+	
+	
     bool pred_taken = false;
     TheISA::PCState target = pc;
 
@@ -178,6 +182,8 @@ BPredUnit::predict(const StaticInstPtr &inst, const InstSeqNum &seqNum,
 
     PredictorHistory predict_record(seqNum, pc.instAddr(),
                                     pred_taken, bp_history, tid);
+									
+
 
     // Now lookup in the BTB or RAS.
     if (pred_taken) {
@@ -248,6 +254,9 @@ BPredUnit::predict(const StaticInstPtr &inst, const InstSeqNum &seqNum,
         }
         TheISA::advancePC(target, inst);
     }
+	
+
+	
 
     pc = target;
 

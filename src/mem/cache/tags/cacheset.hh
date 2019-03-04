@@ -49,6 +49,8 @@
 #define __MEM_CACHE_TAGS_CACHESET_HH__
 
 #include <cassert>
+#include "debug/CacheHwisooDebug.hh"
+#include "debug/faultInjectionTrack.hh"
 
 
 /**
@@ -86,6 +88,12 @@ class CacheSet
      */
     void moveToTail(Blktype *blk);
 
+	//HWISOO
+	void testPrint(Addr tag, bool is_secure);
+		
+	//HWISOO
+	void injectTemporalFault(unsigned int FIbit);
+	void injectPermanentFault(unsigned int FIbit);
 };
 
 template <class Blktype>
@@ -158,5 +166,83 @@ CacheSet<Blktype>::moveToTail(Blktype *blk)
         --i;
     } while (next != blk);
 }
+
+template <class Blktype>
+void
+CacheSet<Blktype>::testPrint(Addr tag, bool is_secure)
+{
+	
+	DPRINTF(CacheHwisooDebug, "assoc:%d\n", assoc);
+    for (int i = 0; i < assoc; ++i) {
+		DPRINTF(CacheHwisooDebug, "valid:%d/size:%d\n", blks[i]->isValid(), blks[i]->size);
+        DPRINTF(CacheHwisooDebug, "data[0]:%d/data[127]:%d\n", blks[i]->data[0], blks[i]->data[127]);
+    }
+	
+    /*HWISOO.
+	1. size looks always 128.
+	-> Then, can we "randomly" select this 128, or can select INDEX of this?(base_set_assoc does not calculate index)
+	2. assoc looks different, but currently it is quite hard to distinguish they are same, or different cache
+	   it means, how can we know that it is data/icache/l2cache and core number? (even in base_set_assoc)
+	   
+	
+	
+	*/
+}
+
+template <class Blktype>
+void
+CacheSet<Blktype>::injectTemporalFault(unsigned int FIbit)
+{
+	unsigned int way = FIbit/2048; 
+	unsigned int injectionByte = (FIbit%2048)/8;
+	uint8_t injectionBit = (FIbit)%8;
+	
+	uint8_t originalByte= blks[way]->data[injectionByte];
+	uint8_t temp = pow (2, injectionBit);
+	uint8_t faultyByte=originalByte xor temp;
+
+	blks[way]->data[injectionByte] = faultyByte;
+	
+	DPRINTF(faultInjectionTrack, "FI temporal to cache(inside of cacheset). byte: [%d] is fliiped (%d -> %d), %s\n", injectionByte, originalByte, faultyByte, (blks[way]->isValid())?"injected(valid)":"will be masked(invalid");
+}
+
+
+
+template <class Blktype>
+void
+CacheSet<Blktype>::injectPermanentFault(unsigned int FIbit)
+{
+	//unsigned int way = FIbit/2048; 
+	//unsigned int injectionByte = (FIbit%2048)/8;
+	//uint8_t injectionBit = (FIbit)%8;
+	unsigned int way = FIbit/2048;
+	
+	if((FIbit%2048)<1024) //make 0
+	{
+		unsigned int injectionByte=(FIbit%2048)/8;
+		uint8_t injectionBit = (FIbit)%8;
+		
+		uint8_t originalByte=blks[way]->data[injectionByte];
+		uint8_t temp = pow (2, injectionBit);
+		uint8_t faultyByte=originalByte & (~temp);
+
+		blks[way]->data[injectionByte] = faultyByte;
+	}
+	else //make 1
+	{
+		unsigned int injectionByte=(FIbit%2048 - 1024)/8;
+		uint8_t injectionBit = (FIbit)%8;
+		
+		uint8_t originalByte=blks[way]->data[injectionByte];
+		uint8_t temp = pow (2, injectionBit);
+		uint8_t faultyByte=originalByte | (temp);
+										
+		blks[way]->data[injectionByte] = faultyByte;
+	}
+
+	
+	
+}
+
 
 #endif

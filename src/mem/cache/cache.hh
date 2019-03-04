@@ -72,6 +72,9 @@ class BasePrefetcher;
 class Cache : public BaseCache
 {
   public:
+  
+	//HWISOO
+	Addr currentInstrPC = 0;
 
     /** A typedef for a list of CacheBlk pointers. */
     typedef std::list<CacheBlk*> BlkList;

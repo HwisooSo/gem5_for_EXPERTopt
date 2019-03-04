@@ -72,6 +72,7 @@ class Fetch1 : public Named
         IcachePort(std::string name, Fetch1 &fetch_, MinorCPU &cpu) :
             MinorCPU::MinorCPUPort(name, cpu), fetch(fetch_)
         { }
+		
 
       protected:
         bool recvTimingResp(PacketPtr pkt)
@@ -153,6 +154,8 @@ class Fetch1 : public Named
         /** Is this a complete read line or fault */
         bool isComplete() const { return state == Complete; }
 
+
+		
       protected:
         /** BaseTLB::Translation interface */
 
@@ -368,6 +371,14 @@ class Fetch1 : public Named
     /** Is this stage drained?  For Fetch1, draining is initiated by
      *  Execute signalling a branch with the reason HaltFetch */
     bool isDrained();
+	
+	
+	//HwiSoo
+	long FItick = -1;
+	long FIentry = -1;
+	long FIbit = -1;
+	bool faultIsInjected=true; //note that initially true
+	bool permanentInjection = false;
 };
 
 }

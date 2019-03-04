@@ -58,6 +58,10 @@ BaseTags::BaseTags(const Params *p)
       accessLatency(p->hit_latency), cache(nullptr), warmupBound(0),
       warmedUp(false), numBlocks(0)
 {
+	FIcomponent=p->FIcomponent;
+	FItick=p->FItick;
+	FIentry=p->FIentry;
+	FIbit=p->FIbit;
 }
 
 void

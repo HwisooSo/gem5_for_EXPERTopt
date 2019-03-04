@@ -122,6 +122,51 @@ class Execute : public Named
     std::vector<FUPipeline *> funcUnits;
 
   public: /* Public for Pipeline to be able to pass it to Decode */
+///////////////////////for fault injection
+int  FIcore;
+long FIcomponent;
+long oldFIcomponent;
+long FItick;
+long FIentry;
+long FIbit;
+long MaxTick;
+long FItoExcLatency;
+bool insertedTomain=false;
+bool faultIsInjected=false;
+bool faultGetsMasked=false;
+bool faultGetsActivated=false;
+bool noFirstExecption=false;
+std::string funcName;
+enum regClass
+			{
+				INTEGER = 1,
+				FLOAT = 2,
+				CC = 3,
+				MISC=4
+			};
+int FItargetRegClass=0;
+////pipeline registers
+InstSeqNum headOfInFlightInst;
+bool test=false;
+/////
+
+bool pipelineRegisters=false; //for fault injection in pipeline registers should be set
+bool FUsFI=false; // for fault injection on FUs should be set
+bool LSQFI=false; // for fault injection on LSQ should be set
+bool BranchsFI=false; // for fault injection on Branchs registers should be set
+bool CMPsFI=false;//for falt injection on CMPs should be set
+bool print=false; //blr test
+bool ScoreboardFI=false; // for fault injection on scoreboard
+
+std::string lastPlace="main"; // moslem for printing out control flow
+int counter=0;
+
+
+
+MinorDynInstPtr lastInstBranchREG = NULL; // branch REG
+MinorDynInstPtr lastInst = NULL;
+
+///////////////////////////////////
     InputBuffer<ForwardInstData> inputBuffer;
 
   protected:
@@ -314,6 +359,20 @@ class Execute : public Named
     /** Like the drain interface on SimObject */
     unsigned int drain();
     void drainResume();
+
+
+//moslem 
+  bool getFunctionName(std::string funcName){
+	//Addr sym_addr;
+	//debugSymbolTable->findNearestSymbol( cpu.getContext(cpu.cpuId())->instAddr(), funcName, sym_addr);
+	//if( (funcName[0] == 'F' &&  funcName[1] == 'U' && funcName[2] == 'N' && funcName[3] == 'C') || (funcName == "main") )
+          return true;
+return false;
+}
+  void checkMaxTick(long time){
+  if ( (MaxTick) && (MaxTick < time) )
+		fatal("%s: ****************EXIT, too long!!!*****************\n",curTick() );
+}
 };
 
 }

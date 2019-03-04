@@ -253,6 +253,14 @@ class MinorCPU(BaseCPU):
 
     executeFuncUnits = Param.MinorFUPool(MinorDefaultFUPool(),
         "FUlines for this processor")
+########################################moslem fault injection
+    FIcore = Param.UInt64(0, "The core that fault injection will be injected")
+    FIcomponent = Param.UInt64(0, "The target component for fault injection can be 1/2/3/4/5/6/7/8/9/10/11/12/13/14/15 for Registerfile/pipelineRegs/FunctionalUnits/LSQ/registerPointer/memoryOperation(LSQ)/PermanentFaultALUInt/Branch/Fetch1/ALUInt/Per-Reg/Per-Fetch/Per-Branch/Per-regsterPointer(yet)/Per-LSQ")
+    FItick = Param.UInt64(0, "The tick that fault injection will be injected")
+    FIentry = Param.UInt64(0, "The harware entry for fault injection")
+    FIbit = Param.UInt64(0, "The harware bit for fault injection")
+    MaxTick = Param.UInt64(0, "The maximum allowable tick, used for fault injection")
+#################################
 
     executeSetTraceTimeOnCommit = Param.Bool(True,
         "Set inst. trace times to be commit times")

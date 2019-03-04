@@ -82,6 +82,10 @@ MinorStats::regStats(const std::string &name, BaseCPU &baseCpu)
         .desc("IPC: instructions per cycle")
         .precision(6);
     ipc = numInsts / baseCpu.numCycles;
+ /** moslem for fault injection analysis **/
+    tickCyclesMain
+        .name(name + ".tickCyclesMain")
+        .desc("Number of cycles which we spend in Main functions");
 }
 
 };

@@ -409,3 +409,23 @@ Packet::PrintReqState::printObj(Printable *obj)
     printLabels();
     obj->print(os, verbosity, curPrefix());
 }
+
+
+
+
+
+//HwiSoo. for FI
+void
+Packet::flipData (unsigned int injectIndex, unsigned int injectBit)
+{
+	uint8_t originalByte = data[injectIndex];
+	uint8_t flipByte = 1;
+	data[injectIndex] = originalByte ^ (flipByte << (injectBit));
+}
+//HwiSoo. for FI
+uint8_t
+Packet::getDataForFI (unsigned int byte)
+{
+	return data[byte];
+}
+

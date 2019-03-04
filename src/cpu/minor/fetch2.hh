@@ -177,6 +177,15 @@ class Fetch2 : public Named
      *  Execute halting Fetch1 causing Fetch2 to naturally drain.
      *  Branch predictions are ignored by Fetch1 during halt */
     bool isDrained();
+	
+	
+	//HwiSoo
+	long FItick = -1;
+	long FIentry = -1;
+	long FIbit = -1;
+	unsigned int FIcomponent = 0;
+	bool faultIsInjected=true; //note that initially true
+	bool permanentInjection = false;
 };
 
 }

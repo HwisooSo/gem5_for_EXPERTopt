@@ -143,7 +143,7 @@ void
 Decoder::consumeBytes(int numBytes)
 {
     offset += numBytes;
-    assert(offset <= sizeof(MachInst) || emi.decoderFault);
+    //assert(offset <= sizeof(MachInst) || emi.decoderFault); //HWISOO
     if (offset == sizeof(MachInst))
         outOfBytes = true;
 }

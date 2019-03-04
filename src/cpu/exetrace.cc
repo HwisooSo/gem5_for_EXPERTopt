@@ -43,11 +43,18 @@
 #include "cpu/thread_context.hh"
 #include "debug/ExecAll.hh"
 #include "enums/OpClass.hh"
+#include "debug/zdcDetection.hh"
+#include "debug/zdcProfile.hh"
+#include "debug/FIinformation.hh"
 
 using namespace std;
 using namespace TheISA;
 
 namespace Trace {
+
+Tick lastTickForBl=0;
+bool afterBl[4]={false, false, false, false};
+bool isFirstInst[4]={true, true, true, true};
 
 void
 ExeTracerRecord::dumpTicks(ostream &outs)
@@ -59,7 +66,76 @@ void
 Trace::ExeTracerRecord::traceInst(const StaticInstPtr &inst, bool ran)
 {
     ostream &outs = Trace::output();
+//moslem
+    std::string sym_str,funcName;
+    Addr sym_addr;
+    Addr cur_pc = pc.instAddr();
+debugSymbolTable->findNearestSymbol(cur_pc, funcName, sym_addr);
+if ( ((funcName == "main" || ((funcName[0] == 'F' && funcName[1] == 'U' && funcName[2] == 'N' && funcName[3] == 'C'))) ) )
+{	
+	if (inst->disassemble(cur_pc, debugSymbolTable).compare("  mov   lr, pc\0")==0 && thread->cpuId()==0)
+		DPRINTF(FIinformation, "cpu%d/NORMAL END\n",thread->cpuId());
 
+
+
+	if (inst->disassemble(cur_pc, debugSymbolTable).compare("  add   r8, r8, r8\0")==0)
+		DPRINTF(zdcDetection, "cpu%d/ERRRORRRRRRRRRRR IS DETECTED on STORE\n",thread->cpuId());
+	else if (inst->disassemble(cur_pc, debugSymbolTable).compare("  addne   r8, r8, r8\0")==0 && data_status != DataInvalid)
+		DPRINTF(zdcDetection, "cpu%d/ERRRORRRRRRRRRRR IS DETECTED on STORE\n",thread->cpuId());
+	else if (inst->disassemble(cur_pc, debugSymbolTable).compare("  sub   r8, r8, r8\0")==0)
+		DPRINTF(zdcDetection, "cpu%d/ERRRORRRRRRRRRRR IS DETECTED on LIBCALL\n",thread->cpuId());
+	else if (inst->disassemble(cur_pc, debugSymbolTable).compare("  mov   r8, r8\0")==0 && data.as_int == 4 )
+		DPRINTF(zdcDetection, "cpu%d/MISMATCH IS DETECTED on silent check voting (False)\n",thread->cpuId());
+	else if (inst->disassemble(cur_pc, debugSymbolTable).compare("  mov   r8, r8\0")==0 && data.as_int == 5 )
+		DPRINTF(zdcDetection, "cpu%d/MISMATCH IS DETECTED on silent check voting (True)\n",thread->cpuId());
+	else if (inst->disassemble(cur_pc, debugSymbolTable).compare("  movlt   r8, r8\0")==0 )
+			DPRINTF(zdcDetection, "cpu%d/Unrecoverable Signal #1 (Not Silent, Stored data is same to backup\n",thread->cpuId());
+	else if (inst->disassemble(cur_pc, debugSymbolTable).compare("  moveq   r8, r8\0")==0 && data_status != DataInvalid )
+			DPRINTF(zdcDetection, "cpu%d/Unrecoverable Signal #2 (Not Silent, Stored data is same to backup and addr register is clean\n",thread->cpuId());
+	else if (inst->disassemble(cur_pc, debugSymbolTable).compare("  movne   r8, r8\0")==0 && data_status != DataInvalid )
+			DPRINTF(zdcDetection, "cpu%d/Unrecoverable Signal #3 Master control flow error\n",thread->cpuId());
+		
+	else if (inst->disassemble(cur_pc, debugSymbolTable).compare("  subne   r8, r8, r8\0")==0 && data_status != DataInvalid)
+		DPRINTF(zdcDetection, "cpu%d/PERMANENT ERROR!\n",thread->cpuId());
+	else if (inst->disassemble(cur_pc, debugSymbolTable).compare("  subsne   r8, r8, r8\0")==0 && data_status != DataInvalid)
+		DPRINTF(zdcDetection, "cpu2/PERMANENT ERROR!\n");
+	//HwiSoo
+	if (afterBl[thread->cpuId()])
+	{
+		DPRINTF(zdcProfile, "cpu%d/blCallAfter/afterTick/%llu\n", thread->cpuId(), curTick());
+		afterBl[thread->cpuId()] = false;
+	}
+	
+	//note. not else if!
+	if (inst->disassemble(cur_pc, debugSymbolTable).compare("  mov   r4, r4")==0)
+	{
+		DPRINTF(zdcProfile, "cpu%d/NRStart/currentTick/%llu\n", thread->cpuId(), curTick());
+		thread->insideNonRepeatable=true;
+	}
+	else if (inst->disassemble(cur_pc, debugSymbolTable).compare("  mov   r7, r7")==0)
+	{
+		DPRINTF(zdcProfile, "cpu%d/NREnd/currentTick/%llu\n", thread->cpuId(), curTick());
+		thread->insideNonRepeatable=false;
+	}
+	else if (inst->disassemble(cur_pc, debugSymbolTable).compare("  bl   ")==0)
+	{
+		DPRINTF(zdcProfile, "cpu%d/blCall/lastTick/%llu\n", thread->cpuId(), lastTickForBl);
+		afterBl[thread->cpuId()] = true;
+	}
+	else if (isFirstInst[thread->cpuId()])
+	{
+		DPRINTF(zdcProfile, "cpu%d/threadStart/currentTick/%llu\n", thread->cpuId(), curTick());
+		isFirstInst[thread->cpuId()]=false;
+	}
+	//Note: end of thread will be printed bellow 
+	//HwiSoo
+	else if (inst->disassemble(cur_pc, debugSymbolTable).find("  uopReg_uop   pc,")!=-1)
+	{
+		DPRINTF(zdcProfile, "cpu%d/threadEnd/currentTick/%llu\n", thread->cpuId(), curTick());
+	}
+	
+	lastTickForBl=curTick();
+	//HwiSoo End
     if (!Debug::ExecUser || !Debug::ExecKernel) {
         bool in_user_mode = TheISA::inUserMode(thread);
         if (in_user_mode && !Debug::ExecUser) return;
@@ -102,9 +178,10 @@ Trace::ExeTracerRecord::traceInst(const StaticInstPtr &inst, bool ran)
     //  Print decoded instruction
     //
 
+
     outs << setw(26) << left;
     outs << inst->disassemble(cur_pc, debugSymbolTable);
-
+	
     if (ran) {
         outs << " : ";
 
@@ -141,7 +218,7 @@ Trace::ExeTracerRecord::traceInst(const StaticInstPtr &inst, bool ran)
     //
     outs << endl;
 }
-
+}
 void
 Trace::ExeTracerRecord::dump()
 {

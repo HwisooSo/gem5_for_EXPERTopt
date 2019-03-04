@@ -53,6 +53,14 @@ class BaseTags(ClockedObject):
     hit_latency = Param.Cycles(Parent.hit_latency,
                                "The hit latency for this cache")
 
+                               
+    FIcore = Param.UInt64(Parent.FIcore, "The core that fault injection will be injected")
+    FIcomponent = Param.UInt64(Parent.FIcomponent, "The target component for cache fault injection can be 21/22/31/32 for l1d temp/l1i temp/l1d per/l1i per")
+    FItick = Param.UInt64(Parent.FItick, "The tick that fault injection will be injected")
+    FIentry = Param.UInt64(Parent.FIentry, "The harware entry for fault injection")
+    FIbit = Param.UInt64(Parent.FIbit, "The harware bit for fault injection")
+    
+    
 class BaseSetAssoc(BaseTags):
     type = 'BaseSetAssoc'
     abstract = True

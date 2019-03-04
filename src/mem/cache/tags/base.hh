@@ -140,7 +140,17 @@ class BaseTags : public ClockedObject
      */
 
   public:
+ 
     typedef BaseTagsParams Params;
+	
+	//HWISOO
+	long FIcomponent;
+	long FItick;
+	long FIentry;
+	long FIbit;
+	bool faultIsInjected = true;
+	Addr currentInstrPC=0;
+	
     BaseTags(const Params *p);
 
     /**

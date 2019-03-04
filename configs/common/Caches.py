@@ -52,7 +52,12 @@ class L1Cache(Cache):
     response_latency = 2
     mshrs = 4
     tgts_per_mshr = 20
-
+    FIcomponent=0
+    FIentry=0
+    FIbit=0
+    FIcore=0
+    FItick=0
+    
 class L1_ICache(L1Cache):
     is_read_only = True
     # Writeback clean lines as well

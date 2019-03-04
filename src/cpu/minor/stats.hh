@@ -76,6 +76,9 @@ class MinorStats
     Stats::Formula cpi;
     Stats::Formula ipc;
 
+   /** moslem for fault injection */
+    Stats::Scalar tickCyclesMain;
+
   public:
     MinorStats();
 
